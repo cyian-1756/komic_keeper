@@ -31,32 +31,30 @@ void main()
 	auto ini = Ini.Parse("config.ini");
 	globalPathToComics = ini["config"].getKey("comic_path");
 
-	getCovers();
-
-	// auto router = new URLRouter;
-	// auto settings = new HTTPServerSettings;
-	// settings.bindAddresses = ["127.0.0.1"];
-	// settings.port = 8080;
-	// router.get("/", &indexPage);
-	// router.get("/comics", &listComics);
-	// router.get("/comics/", &listComics);
-	// router.get("/comics/:page", &listComics);
-	// router.get("/comic/:comic", &comicPage);
-	// router.get("/covers/*", &images);
-	// router.get("/style.css", &css);
-	// router.any("/indexcomics", &indexComics);
-	// // The api endpoint for setting a comics rating
-	// router.post("/rating/:comic", &setComicRating);
-	// router.post("/settags", &setComicTags);
-	// router.get("/tags/:tag/:page", &tagPage);
-	// // TODO add a single regex to match both these urls
-	// router.get("/tags/:tag/", &tagPageFirst);
-	// router.get("/tags/:tag", &tagPageFirst);
-	// // As vibe.d doesn't support "?PARAM=" for some ungodly reason we have to use java script to get the search to work
-	// router.get("/search/:searchTerm", &searchPageFirst);
-	// router.get("/search/:searchTerm/:page", &search);
-	// listenHTTP(settings, router);
-	// runApplication();
+	auto router = new URLRouter;
+	auto settings = new HTTPServerSettings;
+	settings.bindAddresses = ["127.0.0.1"];
+	settings.port = 8080;
+	router.get("/", &indexPage);
+	router.get("/comics", &listComics);
+	router.get("/comics/", &listComics);
+	router.get("/comics/:page", &listComics);
+	router.get("/comic/:comic", &comicPage);
+	router.get("/covers/*", &images);
+	router.get("/style.css", &css);
+	router.any("/indexcomics", &indexComics);
+	// The api endpoint for setting a comics rating
+	router.post("/rating/:comic", &setComicRating);
+	router.post("/settags", &setComicTags);
+	router.get("/tags/:tag/:page", &tagPage);
+	// TODO add a single regex to match both these urls
+	router.get("/tags/:tag/", &tagPageFirst);
+	router.get("/tags/:tag", &tagPageFirst);
+	// As vibe.d doesn't support "?PARAM=" for some ungodly reason we have to use java script to get the search to work
+	router.get("/search/:searchTerm", &searchPageFirst);
+	router.get("/search/:searchTerm/:page", &search);
+	listenHTTP(settings, router);
+	runApplication();
 
 }
 
