@@ -1,0 +1,16 @@
+.dub
+docs.json
+__dummy.html
+docs/
+adult_m.so
+adult_m.dylib
+adult_m.dll
+adult_m.a
+adult_m.lib
+adult_m-test-*
+*.exe
+*.o
+*.obj
+*.lst
+*.sqlite
+config.ini
