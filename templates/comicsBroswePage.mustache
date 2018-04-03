@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+    <title>{{title}}</title>
+</head>
+<body>
+<div>
+    <script  language="javascript">
+    // This is here because vibe.d doesn't support "?PARAM=" for some ungodly reason so we have to use JS to redirect the user to the search page
+        function s() {
+            var search = document.getElementById('search').value; window.location = '/search/' + search;
+        }
+    </script>
+    <form id="tfnewsearch" method="get" action="/search" onsubmit="javascript:s();return false;">
+		<input type="text" name="search" id="search">
+        <input type="button" value="search" onclick="s()">
+	</form>
+</div>
+<table style="width:100%" border=10 cellpadding="0" cellspacing="0" align="center">
+    <tr>
+        <th align="left" style="width:20%">Comic</th>
+        <th>Comic Info</th>
+    </tr>
+    {{&comicTable}}
+</table>
+<p style="float:left; padding-left: 15%">
+    <a href="/{{url}}/{{lastPage}}">Back</a>
+</p>
+<p style="float:right; padding-right: 15%">
+    <a href="/{{url}}/{{nextPage}}">Next</a>
+</p>
+</body>
+</html>

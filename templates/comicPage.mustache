@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+    <title>{{title}}</title>
+</head>
+<body>
+<div align="center" style="width:50%">
+    <div style="float:left">
+        <p>{{comicName}}</p>
+        <p>Rating: {{comicRating}}</p>
+        <p>Size: {{comicSize}} MB</p>
+        <p><a href="{{comicLink}}">Open Comic</a></p>
+    </div>
+    <div style="float:right">
+        <form action="/rating/{{comicName}}" method="post">
+        Rating: <input type="text" name="rating">
+        <input type="submit" value="Submit">
+        </form>
+        <form action="/settags" method="post">
+        Tags: <input type="text" name="tags">
+        <input type="hidden" name="comicName" value="{{comicName}}">
+        <input type="submit" value="Submit">
+        </form>
+    </div>
+</div>
+</body>
+</html>
