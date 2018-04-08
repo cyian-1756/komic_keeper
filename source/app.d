@@ -32,37 +32,43 @@ auto rnd = Random(1);
 
 
 
-void main()
+void main(string[] args)
 {
 	rnd = Random(unpredictableSeed);
 	db = Database("db.sqlite");
 	auto ini = Ini.Parse("config.ini");
 	globalPathToComics = ini["config"].getKey("comic_path");
 
-	auto router = new URLRouter;
-	auto settings = new HTTPServerSettings;
-	settings.bindAddresses = ["127.0.0.1"];
-	settings.port = 8080;
-	router.get("/", &indexPage);
-	router.get("/comics", &listComics);
-	router.get("/comics/", &listComics);
-	router.get("/comics/:page", &listComics);
-	router.get("/comic/:comic", &comicPage);
-	router.get("/covers/*", &images);
-	router.get("/style.css", &css);
-	router.any("/indexcomics", &indexComics);
-	// The api endpoint for setting a comics rating
-	router.post("/rating/:comic", &setComicRating);
-	router.post("/settags", &setComicTags);
-	router.get("/tags/:tag/:page", &tagPage);
-	// TODO add a single regex to match both these urls
-	router.get("/tags/:tag/", &tagPageFirst);
-	router.get("/tags/:tag", &tagPageFirst);
-	// As vibe.d doesn't support "?PARAM=" for some ungodly reason we have to use java script to get the search to work
-	router.get("/search/:searchTerm", &searchPageFirst);
-	router.get("/search/:searchTerm/:page", &search);
-	listenHTTP(settings, router);
-	runApplication();
+	if (args[1] == "--get-covers") {
+		getCovers();
+		return;
+	} else {
+
+		auto router = new URLRouter;
+		auto settings = new HTTPServerSettings;
+		settings.bindAddresses = ["127.0.0.1"];
+		settings.port = 8080;
+		router.get("/", &indexPage);
+		router.get("/comics", &listComics);
+		router.get("/comics/", &listComics);
+		router.get("/comics/:page", &listComics);
+		router.get("/comic/:comic", &comicPage);
+		router.get("/covers/*", &images);
+		router.get("/style.css", &css);
+		router.any("/indexcomics", &indexComics);
+		// The api endpoint for setting a comics rating
+		router.post("/rating/:comic", &setComicRating);
+		router.post("/settags", &setComicTags);
+		router.get("/tags/:tag/:page", &tagPage);
+		// TODO add a single regex to match both these urls
+		router.get("/tags/:tag/", &tagPageFirst);
+		router.get("/tags/:tag", &tagPageFirst);
+		// As vibe.d doesn't support "?PARAM=" for some ungodly reason we have to use java script to get the search to work
+		router.get("/search/:searchTerm", &searchPageFirst);
+		router.get("/search/:searchTerm/:page", &search);
+		listenHTTP(settings, router);
+		runApplication();
+	}
 
 }
 
@@ -262,44 +268,6 @@ void getCovers()
 	}
 }
 
-void onTheFlyCoverscbz(string[] names) {
-	foreach(string name; names) {
-		writeln(name);
-		Statement statement = db.prepare(
-    	"SELECT * FROM comics WHERE name = :name");
-		statement.bind(":name", name);
-		ResultRange results = statement.execute();
-		writeln("ran sql");
-		foreach (Row row; results) {
-			writeln(row);
-			string comicName = row["name"].as!string;
-			if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
-				writeln("Already got cover for ", comicName);
-			} else {
-
-				writeln("getting cover for ", comicName);
-
-				ubyte[] tmpImage = cbzGetCover(row["path"].as!string);
-
-				if (tmpImage != null) {
-					ubyte[] toWrite;
-					writeln(tmpImage.length);
-					if (tmpImage.length /1000/1000 > 1) {
-						toWrite = resizeImages(tmpImage);
-					} else {
-						toWrite = tmpImage;
-					}
-					std.file.write("covers/" ~ comicName ~ ".cbz_" ~ "cover", toWrite);
-				}	
-			}	
-			ubyte[] toWrite = cbzGetCover(row["path"].as!string);
-			std.file.write("covers/" ~ row["name"].as!string ~ ".cbz_" ~ "cover", toWrite);
-		}
-		writeln("Resetting statement");
-		statement.reset();
-	}
-}
-
 void indexPage(HTTPServerRequest req, HTTPServerResponse res)
 {
 	res.contentType = "text/html";
@@ -336,9 +304,10 @@ ubyte[] cbzGetCover(string comicPath) {
 			}
 		}
 	} catch (std.zip.ZipException e) {
-		writedln("Got error: %s", e.msg);
+		writefln("Got error: %s", e.msg);
 		return null;
 	}
+	return null;
 }
 
 ubyte[] cbrGetCover(string comicPath, string comicName) {
@@ -350,12 +319,19 @@ ubyte[] cbrGetCover(string comicPath, string comicName) {
 	}
 	// Because of RAR closed source nature we have to use external tools to get the covers for cbr files
 	// This shell call extracts the first file in the cbr to "/tmp/komic_keeper/$comicName"
-	auto pid = spawnProcess(["unar", comicPath, "-o", "/tmp/komic_keeper/", "-s", "-i", "0", ">", "/dev/null"]);
+	auto pid = spawnProcess(["unar", comicPath, "-o", "/tmp/komic_keeper/" ~ comicName.split(".cbr")[0], "-s", "-i", "0", ">", "/dev/null"]);
 	wait(pid);
 	try {
 		// loop over the dir and get the first file
 		comicFiles = dirEntries("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0] ~ "/", SpanMode.depth);
 	} catch (std.file.FileException e) {
+		// Sometimes the cbr extracts a single file so we try this
+		if (exists("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0] ~ ".jpg")) {
+			return cast(ubyte[])(read("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0] ~ ".jpg"));
+		}
+		if (exists("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0] ~ ".png")) {
+			return cast(ubyte[])(read("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0] ~ ".png"));
+		}
 		return null;
 	}
 
@@ -363,6 +339,8 @@ ubyte[] cbrGetCover(string comicPath, string comicName) {
 	{
 		try {
 			ubyte[] toReturn = cast(ubyte[])(read(e.name));
+			// Delete the temp folder
+			rmdirRecurse("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0]);
     		return toReturn;
 		} catch (std.file.FileException e) {
 			writefln("Could not get cover for %s\nGot Error: %s", comicName, e.msg);
