@@ -9,6 +9,9 @@ import std.zip;
 import std.algorithm;
 import std.conv;
 import std.process;
+import std.parallelism;
+import std.random;
+import core.thread;
 import d2sqlite3;
 import vibe.http.router;
 import vibe.http.server;
@@ -24,39 +27,44 @@ string buildTime = __TIMESTAMP__;
 auto kkVersion = 0.1;
 // The path to where the comics on stored on disk
 string globalPathToComics;
+static string randKeyAlph = "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890";
+auto rnd = Random(1);
+
+
 
 void main()
 {
+	rnd = Random(unpredictableSeed);
 	db = Database("db.sqlite");
 	auto ini = Ini.Parse("config.ini");
 	globalPathToComics = ini["config"].getKey("comic_path");
 
-	// getCovers();
+	getCovers();
 
-	auto router = new URLRouter;
-	auto settings = new HTTPServerSettings;
-	settings.bindAddresses = ["127.0.0.1"];
-	settings.port = 8080;
-	router.get("/", &indexPage);
-	router.get("/comics", &listComics);
-	router.get("/comics/", &listComics);
-	router.get("/comics/:page", &listComics);
-	router.get("/comic/:comic", &comicPage);
-	router.get("/covers/*", &images);
-	router.get("/style.css", &css);
-	router.any("/indexcomics", &indexComics);
-	// The api endpoint for setting a comics rating
-	router.post("/rating/:comic", &setComicRating);
-	router.post("/settags", &setComicTags);
-	router.get("/tags/:tag/:page", &tagPage);
-	// TODO add a single regex to match both these urls
-	router.get("/tags/:tag/", &tagPageFirst);
-	router.get("/tags/:tag", &tagPageFirst);
-	// As vibe.d doesn't support "?PARAM=" for some ungodly reason we have to use java script to get the search to work
-	router.get("/search/:searchTerm", &searchPageFirst);
-	router.get("/search/:searchTerm/:page", &search);
-	listenHTTP(settings, router);
-	runApplication();
+	// auto router = new URLRouter;
+	// auto settings = new HTTPServerSettings;
+	// settings.bindAddresses = ["127.0.0.1"];
+	// settings.port = 8080;
+	// router.get("/", &indexPage);
+	// router.get("/comics", &listComics);
+	// router.get("/comics/", &listComics);
+	// router.get("/comics/:page", &listComics);
+	// router.get("/comic/:comic", &comicPage);
+	// router.get("/covers/*", &images);
+	// router.get("/style.css", &css);
+	// router.any("/indexcomics", &indexComics);
+	// // The api endpoint for setting a comics rating
+	// router.post("/rating/:comic", &setComicRating);
+	// router.post("/settags", &setComicTags);
+	// router.get("/tags/:tag/:page", &tagPage);
+	// // TODO add a single regex to match both these urls
+	// router.get("/tags/:tag/", &tagPageFirst);
+	// router.get("/tags/:tag", &tagPageFirst);
+	// // As vibe.d doesn't support "?PARAM=" for some ungodly reason we have to use java script to get the search to work
+	// router.get("/search/:searchTerm", &searchPageFirst);
+	// router.get("/search/:searchTerm/:page", &search);
+	// listenHTTP(settings, router);
+	// runApplication();
 
 }
 
@@ -131,13 +139,35 @@ void writeComicsToDB(comic[] comics) {
 }
 
 ubyte[] resizeImages(ubyte[] image) {
-	std.file.write("/tmp/komic_keeper/cover.tmp", image);
-	auto pid = spawnProcess(["convert", "-resize", "20%", "/tmp/komic_keeper/cover.tmp", "/tmp/komic_keeper/cover.resized"]);
-	wait(pid);
-	ubyte[] toReturn = cast(ubyte[])(read("/tmp/komic_keeper/cover.resized"));
-	std.file.remove("/tmp/komic_keeper/cover.tmp");
-	std.file.remove("/tmp/komic_keeper/cover.resized");
-	return toReturn;
+	string randString;
+	for (int i = 0; i != 10; i++) {
+		randString ~= randKeyAlph[uniform(0, 15, rnd)];
+	}
+	std.file.write("/tmp/komic_keeper/cover.tmp." ~ randString, image);
+	try {
+		auto pid = spawnProcess(["convert", "-resize", "20%", "/tmp/komic_keeper/cover.tmp." ~ randString, "/tmp/komic_keeper/cover.resized." ~ randString]);
+		wait(pid);
+	} catch (std.process.ProcessException e) {
+		writefln("[!] Failed to spawn convert because of error %s\nTrying again", e.msg);
+		// Sleep for a little bit
+		Thread.sleep(1.seconds);
+		try {
+			auto pid = spawnProcess(["convert", "-resize", "20%", "/tmp/komic_keeper/cover.tmp." ~ randString, "/tmp/komic_keeper/cover.resized." ~ randString]);
+			wait(pid);
+		} catch (std.process.ProcessException e) {
+			return null;
+		}
+
+	}
+	try {
+		ubyte[] toReturn = cast(ubyte[])(read("/tmp/komic_keeper/cover.resized." ~ randString));
+		std.file.remove("/tmp/komic_keeper/cover.tmp." ~ randString);
+		std.file.remove("/tmp/komic_keeper/cover.resized." ~ randString);
+		return toReturn;
+	} catch (std.file.FileException e) {
+		writefln("Could not remove temp files\nGot Error: %s", e.msg);
+		return null;
+	}
 
 }
 
@@ -162,69 +192,88 @@ bool checkInDB(string itemName) {
 	return false;
 }
 
+comic[] dbToComic(string type) {
+	Statement statement = db.prepare(
+    	"SELECT * FROM comics WHERE type = :type");
+	statement.bind(":type", type);
+	ResultRange results = statement.execute();
+	comic[] comics;
+	foreach (Row row; results) {
+		comic c;
+		c.name = row["name"].as!string;
+		c.path = row["path"].as!string;
+		comics ~= c;
+	}
+	statement.reset();
+	return comics;		
+
+}
+
 // Loops over all comics and extracts their cover to ./covers. This is very slow
 // TODO: Add on the fly cover grabbing
-// void getCovers()
-// {
-// 	ResultRange results = db.execute("SELECT * FROM comics WHERE type = 'cbr'");
-// 	foreach (Row row; results) {
-// 		string comicName = row["name"].as!string;
-// 		if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
-// 			writeln("Already got cover for ", comicName);
-// 		} else {
+void getCovers()
+{
+	comic[] comics = dbToComic("cbr");
+	foreach (comic c; comics.parallel(12)) {
+		string comicName = c.name;
+		if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
+			writeln("Already got cover for ", comicName);
+		} else {
 
-// 			writeln("getting cover for ", comicName);
+			writefln("[*] Getting cover for %s\n", comicName);
 
-// 			ubyte[] tmpImage = cbrGetCover(row["path"].as!string, comicName);
+			ubyte[] tmpImage = cbrGetCover(c.path, comicName);
 
-// 			if (tmpImage != null) {
-// 				ubyte[] toWrite;
-// 				writeln(tmpImage.length);
-// 				if (tmpImage.length /1000/1000 > 1) {
-// 					toWrite = resizeImages(tmpImage);
-// 				} else {
-// 					toWrite = tmpImage;
-// 				}
-// 				std.file.write("covers/" ~ comicName ~ "_" ~ "cover", toWrite);
-// 			}	
-// 		}
-// 	}
+			if (tmpImage != null) {
+				ubyte[] toWrite;
+				writeln(tmpImage.length);
+				if (tmpImage.length /1000/1000 > 1) {
+					toWrite = resizeImages(tmpImage);
+				} else {
+					toWrite = tmpImage;
+				}
+				std.file.write("covers/" ~ comicName ~ "_" ~ "cover", toWrite);
+			}	
+		}
+	}
 
-// 	results = db.execute("SELECT * FROM comics WHERE type = 'cbz'");
-// 	foreach (Row row; results) {
-// 		string comicName = row["name"].as!string;
-// 		if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
-// 			writeln("Already got cover for ", comicName);
-// 		} else {
+	comics = dbToComic("cbz");
+	foreach (comic c; comics.parallel(16)) {
+		string comicName = c.name;
+		if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
+			writeln("Already got cover for ", comicName);
+		} else {
 
-// 			writeln("getting cover for ", comicName);
+			writeln("[*] Getting cover for ", comicName);
 
-// 			ubyte[] tmpImage = cbzGetCover(row["path"].as!string, comicName);
+			ubyte[] tmpImage = cbzGetCover(c.path);
 
-// 			if (tmpImage != null) {
-// 				ubyte[] toWrite;
-// 				writeln(tmpImage.length);
-// 				if (tmpImage.length /1000/1000 > 1) {
-// 					toWrite = resizeImages(tmpImage);
-// 				} else {
-// 					toWrite = tmpImage;
-// 				}
-// 				std.file.write("covers/" ~ comicName ~ ".cbz_" ~ "cover", toWrite);
-// 			}	
-// 		}	
-// 		ubyte[] toWrite = cbzGetCover(row["path"].as!string);
-// 		std.file.write("covers/" ~ row["name"].as!string ~ ".cbz_" ~ "cover", toWrite);
-// 	}
-// }
+			if (tmpImage != null) {
+				ubyte[] toWrite;
+				writeln(tmpImage.length);
+				if (tmpImage.length /1000/1000 > 1) {
+					toWrite = resizeImages(tmpImage);
+				} else {
+					toWrite = tmpImage;
+				}
+				std.file.write("covers/" ~ comicName ~ "_" ~ "cover", toWrite);
+			}	
+		}	
+		ubyte[] toWrite = cbzGetCover(c.path);
+		std.file.write("covers/" ~ comicName ~ "_" ~ "cover", toWrite);
+	}
+}
 
-void onTheFlyCoverscbz(string[] paths) {
-	foreach(string path; paths) {
+void onTheFlyCoverscbz(string[] names) {
+	foreach(string name; names) {
+		writeln(name);
 		Statement statement = db.prepare(
-    	"SELECT * FROM comics WHERE path = :path");
-		statement.bind(":path", path);
+    	"SELECT * FROM comics WHERE name = :name");
+		statement.bind(":name", name);
 		ResultRange results = statement.execute();
-		statement.reset();
+		writeln("ran sql");
 		foreach (Row row; results) {
+			writeln(row);
 			string comicName = row["name"].as!string;
 			if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
 				writeln("Already got cover for ", comicName);
@@ -248,6 +297,8 @@ void onTheFlyCoverscbz(string[] paths) {
 			ubyte[] toWrite = cbzGetCover(row["path"].as!string);
 			std.file.write("covers/" ~ row["name"].as!string ~ ".cbz_" ~ "cover", toWrite);
 		}
+		writeln("Resetting statement");
+		statement.reset();
 	}
 }
 
@@ -267,25 +318,29 @@ ubyte[] cbzGetCover(string comicPath) {
 	writeln("Getting cover for " ~ comicPath);
 	string[] fileNames;
 	string coverName;
-	auto zip = new ZipArchive(read(comicPath));
-	// loop over the zip and add the names of all files in it to an array
-	foreach (name, am; zip.directory)
-	{
-		// This if is here so we skip over folders
-		if (am.expandedSize != 0) {
-			fileNames ~= name;
+	try {
+		auto zip = new ZipArchive(read(comicPath));
+		// loop over the zip and add the names of all files in it to an array
+		foreach (name, am; zip.directory)
+		{
+			// This if is here so we skip over folders
+			if (am.expandedSize != 0) {
+				fileNames ~= name;
+			}
 		}
-	}
-	// This orders the file by name meaning that the first file in this array will be the cover
-	auto f = fileNames.sort();
-	foreach (name, am; zip.directory)
-	{
-		// Some comics include a XML file with their metadata which we want to skip
-		if (name == f[0] && name.split(".")[name.split(".").length - 1] != "xml") {
-			return zip.expand(am);
+		// This orders the file by name meaning that the first file in this array will be the cover
+		auto f = fileNames.sort();
+		foreach (name, am; zip.directory)
+		{
+			// Some comics include a XML file with their metadata which we want to skip
+			if (name == f[0] && name.split(".")[name.split(".").length - 1] != "xml") {
+				return zip.expand(am);
+			}
 		}
+	} catch (std.zip.ZipException e) {
+		writedln("Got error: %s", e.msg);
+		return null;
 	}
-	return null;
 }
 
 ubyte[] cbrGetCover(string comicPath, string comicName) {
@@ -297,7 +352,7 @@ ubyte[] cbrGetCover(string comicPath, string comicName) {
 	}
 	// Because of RAR closed source nature we have to use external tools to get the covers for cbr files
 	// This shell call extracts the first file in the cbr to "/tmp/komic_keeper/$comicName"
-	auto pid = spawnProcess(["unar", comicPath, "-o", "/tmp/komic_keeper/", "-s", "-i", "0"]);
+	auto pid = spawnProcess(["unar", comicPath, "-o", "/tmp/komic_keeper/", "-s", "-i", "0", ">", "/dev/null"]);
 	wait(pid);
 	try {
 		// loop over the dir and get the first file
@@ -308,8 +363,12 @@ ubyte[] cbrGetCover(string comicPath, string comicName) {
 
 	foreach (DirEntry e; comicFiles)
 	{
-		ubyte[] toReturn = cast(ubyte[])(read(e.name));
-    	return toReturn;
+		try {
+			ubyte[] toReturn = cast(ubyte[])(read(e.name));
+    		return toReturn;
+		} catch (std.file.FileException e) {
+			writefln("Could not get cover for %s\nGot Error: %s", comicName, e.msg);
+		}
 	}
 
 
@@ -340,12 +399,12 @@ void listComics(HTTPServerRequest req, HTTPServerResponse res)
 		results = db.execute("SELECT * FROM comics LIMIT 100");
 	}
 	string page;
-	string[] cbzPaths;
+	string[] cbzNames;
 	foreach (Row row; results) {
 		// This if makes sure we don't write any null rows
 		if (row["name"].as!string != null) {
 			if (row["type"].as!string == "cbz") {
-				cbzPaths ~= row["path"].as!string;
+				cbzNames ~= row["name"].as!string;
 			}
 			float size = row["size"].as!int / 1000 / 1000;
 			context["comicName"]  = row["name"].as!string;
