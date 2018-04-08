@@ -610,3 +610,15 @@ void indexComics(HTTPServerRequest req, HTTPServerResponse res) {
 	writeComicsToDB(getComics(globalPathToComics));
 	res.writeBody("done");
 }
+
+unittest {
+	// Check the tag generation
+	auto tagHtml = generateTagsHTML("test1, test2");
+	auto expectedTagHtml = "<a href=\"/tags/test1\">test1 </a> | <a href=\"/tags/test2\">test2 </a>";
+	try {
+		assert(tagHtml == expectedTagHtml);
+	} catch (core.exception.AssertError e) {
+		writefln("tag html was \"%s\" not \"%s\"", tagHtml, expectedTagHtml);
+		throw(e);
+	}
+}
