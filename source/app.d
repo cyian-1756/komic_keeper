@@ -506,11 +506,17 @@ string generateTagsHTML(string tagsFromDB) {
 	}
 	string htmlToReturn;
 	string[] tags = tagsFromDB.split(", ");
+	ulong currentTag = 1;
+	ulong totalTags = tags.length;
 	Mustache mustache;
 	auto context = new Mustache.Context;
 	foreach (string tag; tags) {
 		context["tagName"] = tag;
 		htmlToReturn ~= mustache.render("templates/link", context);
+		if (currentTag != totalTags) {
+			htmlToReturn ~= " | ";
+		}
+		currentTag += 1;
 	}
 	return htmlToReturn;
 }
