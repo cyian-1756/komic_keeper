@@ -39,9 +39,11 @@ void main(string[] args)
 	auto ini = Ini.Parse("config.ini");
 	globalPathToComics = ini["config"].getKey("comic_path");
 
-	if (args[1] == "--get-covers") {
-		getCovers();
-		return;
+	if (args.length > 1) {
+		if (args[1] == "--get-covers") {
+			getCovers();
+			return;
+		}
 	} else {
 
 		auto router = new URLRouter;
@@ -221,7 +223,7 @@ void getCovers()
 	foreach (comic c; comics.parallel(12)) {
 		string comicName = c.name;
 		if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
-			writeln("Already got cover for ", comicName);
+			writeln("[*] Already got cover for ", comicName);
 		} else {
 
 			writefln("[*] Getting cover for %s\n", comicName);
@@ -230,7 +232,6 @@ void getCovers()
 
 			if (tmpImage != null) {
 				ubyte[] toWrite;
-				writeln(tmpImage.length);
 				if (tmpImage.length /1000/1000 > 1) {
 					toWrite = resizeImages(tmpImage);
 				} else {
@@ -242,10 +243,10 @@ void getCovers()
 	}
 
 	comics = dbToComic("cbz");
-	foreach (comic c; comics.parallel(16)) {
+	foreach (comic c; comics) {
 		string comicName = c.name;
 		if (exists("covers/" ~ comicName ~ "_" ~ "cover")) {
-			writeln("Already got cover for ", comicName);
+			writeln("[*] Already got cover for ", comicName);
 		} else {
 
 			writeln("[*] Getting cover for ", comicName);
@@ -254,17 +255,19 @@ void getCovers()
 
 			if (tmpImage != null) {
 				ubyte[] toWrite;
-				writeln(tmpImage.length);
 				if (tmpImage.length /1000/1000 > 1) {
 					toWrite = resizeImages(tmpImage);
 				} else {
 					toWrite = tmpImage;
 				}
+				debug {
+					writeln("[+] Writing file " ~ "covers/" ~ comicName ~ "_" ~ "cover");
+				}
 				std.file.write("covers/" ~ comicName ~ "_" ~ "cover", toWrite);
-			}	
-		}	
-		ubyte[] toWrite = cbzGetCover(c.path);
-		std.file.write("covers/" ~ comicName ~ "_" ~ "cover", toWrite);
+			} else {
+				writeln("[!] Couldn't get cover for ", comicName);
+			}
+		}
 	}
 }
 
@@ -281,12 +284,13 @@ void indexPage(HTTPServerRequest req, HTTPServerResponse res)
 }
 
 ubyte[] cbzGetCover(string comicPath) {
-	writeln("Getting cover for " ~ comicPath);
 	string[] fileNames;
 	string coverName;
 	try {
+		writeln("Opening zip ", comicPath);
 		auto zip = new ZipArchive(read(comicPath));
 		// loop over the zip and add the names of all files in it to an array
+		writeln("Looping over zip for file names");
 		foreach (name, am; zip.directory)
 		{
 			// This if is here so we skip over folders
@@ -295,6 +299,7 @@ ubyte[] cbzGetCover(string comicPath) {
 			}
 		}
 		// This orders the file by name meaning that the first file in this array will be the cover
+		writeln("Sorting files");
 		auto f = fileNames.sort();
 		foreach (name, am; zip.directory)
 		{
@@ -304,7 +309,7 @@ ubyte[] cbzGetCover(string comicPath) {
 			}
 		}
 	} catch (std.zip.ZipException e) {
-		writefln("Got error: %s", e.msg);
+		writefln("[!] Got error: %s", e.msg);
 		return null;
 	}
 	return null;
@@ -315,11 +320,11 @@ ubyte[] cbrGetCover(string comicPath, string comicName) {
 	string coverName;
 	DirIterator comicFiles;
 	debug {
-		writeln("Unraring ", comicPath);
+		writeln("[*] Unraring ", comicPath);
 	}
 	// Because of RAR closed source nature we have to use external tools to get the covers for cbr files
 	// This shell call extracts the first file in the cbr to "/tmp/komic_keeper/$comicName"
-	auto pid = spawnProcess(["unar", comicPath, "-o", "/tmp/komic_keeper/" ~ comicName.split(".cbr")[0], "-s", "-i", "0", ">", "/dev/null"]);
+	auto pid = spawnProcess(["unar", comicPath, "-o", "/tmp/komic_keeper/" ~ comicName.split(".cbr")[0], "-s", "-i", "0", "-D"]);
 	wait(pid);
 	try {
 		// loop over the dir and get the first file
@@ -340,9 +345,10 @@ ubyte[] cbrGetCover(string comicPath, string comicName) {
 		try {
 			ubyte[] toReturn = cast(ubyte[])(read(e.name));
 			// Delete the temp folder
-			rmdirRecurse("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0]);
+			// rmdirRecurse("/tmp/komic_keeper/" ~ comicName.split(".cbr")[0]);
     		return toReturn;
 		} catch (std.file.FileException e) {
+			// 
 			writefln("Could not get cover for %s\nGot Error: %s", comicName, e.msg);
 		}
 	}
