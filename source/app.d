@@ -12,6 +12,7 @@ import std.process;
 import std.parallelism;
 import std.random;
 import core.thread;
+import std.uni : toUpper;
 import d2sqlite3;
 import vibe.http.router;
 import vibe.http.server;
@@ -432,8 +433,9 @@ void searchPageFirst(HTTPServerRequest req, HTTPServerResponse res) {
 	auto searchTerm = req.params["searchTerm"];
 	context["nextPage"] = 2;
 	context["url"]  = "search";
-	Statement statement = db.prepare("SELECT * FROM comics WHERE instr(name, :search)>0 LIMIT 100");
-	statement.bind(":search", searchTerm);
+	// We turn both the colum we're searching and the search term to upper case
+	Statement statement = db.prepare("SELECT * FROM comics WHERE instr(UPPER(name), :search)>0 LIMIT 100");
+	statement.bind(":search", toUpper(searchTerm));
 
 	string page = generateTableHtml(statement);
 	context["comicTable"]  = page;
