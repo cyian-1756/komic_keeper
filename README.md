@@ -19,7 +19,9 @@ Then run setup.sh to make the database and covers folder
 
 ## Usage
 
-Going to 127.0.0.1:8080/indexcomics will cause your comics to be indexed
+To index comics run the program with `--index-comics`
+
+To get the covers of your comics run the program with `--get-covers`
 
 
 ## Requirements
