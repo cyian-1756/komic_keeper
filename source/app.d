@@ -44,6 +44,9 @@ void main(string[] args)
 		if (args[1] == "--get-covers") {
 			getCovers();
 			return;
+		} else if (args[1] == "--index-comics") {
+			getComics(globalPathToComics);
+			return;
 		}
 	} else {
 
